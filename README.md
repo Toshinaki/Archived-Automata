@@ -30,6 +30,11 @@ And google scripts for google services
 - web page as ui (built with flask, or react?)
 - desktop ui (QT, or electron?)
 
+### Mode
+- Online: share scripts with people, group or public; upload or download
+- Offline: Just put scripts (.py or .csv or ...?) into local folder, and the level is determined by suffix
+
+
 ### For different missions
 #### Forms
 - Recommended: a spreadsheet or csv file contains xpaths for every input-able elements for reference
@@ -38,5 +43,7 @@ And google scripts for google services
     2. Advanced: a python file implementing two functions: `rough_func` and `work_func` (for `HiveMind` using)
 #### Uploading images/files (a branch of Forms, only more complicated)
 #### Notification
+Email, Slack, Redash...
 #### Copy/Paste to csv-like
+Python libraries (csv, gspread)
 #### Crawling
