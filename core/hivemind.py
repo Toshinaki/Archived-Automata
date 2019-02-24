@@ -11,9 +11,9 @@
 # check if current path in sys.path; if not, append
 import sys
 from pathlib import Path
-main_folder = Path(__file__).absolute().parent.parent
-if not main_folder in sys.path:
-    sys.path.append(str(main_folder))
+root = Path(__file__).absolute().parent.parent
+if not str(root.parent) in sys.path:
+    sys.path.append(str(root.parent))
 
 import queue, threading, json, os, time, random
 from itertools import cycle, repeat
@@ -22,20 +22,16 @@ from functools import partial
 import numpy as np
 import pandas as pd
 
-from udec.ulogger import create_logger, Udeclogger
-from helpers import read_json
+from Automata.core.udec.ulogger import create_logger, Udeclogger
+from Automata.core.helpers import read_configuration
 # import driver based on config file
-config = main_folder.joinpath('data/config.json')
-try:
-    config = read_json(config)
-    if config['favor_browser'] == 'firefox':
-        from browsermaster import FirefoxMaster as Driver
-    # add elif here if new driver is supported
-    else:
-        from browsermaster import ChromeMaster as Driver
-except (FileNotFoundError, KeyError):
-    from browsermaster import ChromeMaster as Driver
-
+config_path = root.joinpath('data/config.json')
+fb = read_configuration(config_path, 'favor_browser')
+if (not fb) or (fb == 'chrome'):
+    from Automata.core.browsermaster import ChromeMaster as Driver
+# add elif here if new driver is supported
+elif fb == 'firefox':
+    from Automata.core.browsermaster import FirefoxMaster as Driver
 
 
 ###############################################################################
@@ -180,8 +176,8 @@ class Queenb(Babyb):
         self.honeybs = [] # retrievers 
         self.workerbs = [] # consumers
 
-        self.qb = self.add_child(Queueb, name=queueb_name, sleep_interval=queueb_interval)
-        self.killerb = self.add_child(Killerb, name=killerb_name, sleep_interval=killerb_interval)
+        self.qb = self.add_child(Qb, name=queueb_name, sleep_interval=queueb_interval, suppress=True)
+        self.killerb = self.add_child(Killerb, name=killerb_name, sleep_interval=killerb_interval, suppress=True)
         # self.reset_killerb(killer_interval)
 
         self.results = []
@@ -195,6 +191,12 @@ class Queenb(Babyb):
             return b
         else:
             self.logger.warning('Hive is full.')
+    
+    @Udeclogger(ltype='excexe')
+    def add_children(self, child, *args, **kwargs):
+        while self.count('worker') + self.count('honey') < self.max_children:
+            b = child(self, *args, **kwargs)
+        self.logger.warning('Hive is full.')
 
 
     # @Udeclogger(ltype='excexe')
@@ -223,37 +225,37 @@ class Queenb(Babyb):
         else:
             return len(self.workerbs)
 
-    @Udeclogger(ltype='execution')
-    def add_to_queue(self, iterable, sleep=3, **kwargs):
-        for i in iterable:
-            while True:
-                if self.status == 'done':
-                    break
-                try:
-                    self.lock.acquire()
-                    self.queue.put_nowait(i)
-                except queue.Full:
-                    self.lock.release()
-                    time.sleep(sleep)
-                    continue
-                else:
-                    self.lock.release()
-                    break
+    # @Udeclogger(ltype='execution')
+    # def add_to_queue(self, iterable, sleep=3, **kwargs):
+    #     for i in iterable:
+    #         while True:
+    #             if self.status == 'done':
+    #                 break
+    #             try:
+    #                 self.lock.acquire()
+    #                 self.queue.put_nowait(i)
+    #             except queue.Full:
+    #                 self.lock.release()
+    #                 time.sleep(sleep)
+    #                 continue
+    #             else:
+    #                 self.lock.release()
+    #                 break
 
-    @Udeclogger(ltype='execution')
-    def add_stop_flag(self, sleep=3, **kwargs):
-        self.add_to_queue([stop_flag for _ in range(self.count('workerb'))], sleep=sleep, suppress=True)
+    # @Udeclogger(ltype='execution')
+    # def add_stop_flag(self, sleep=3, **kwargs):
+    #     self.add_to_queue([stop_flag for _ in range(self.count('workerb'))], sleep=sleep, suppress=True)
             
-    @Udeclogger(ltype='execution')
-    def fetch_one(self, sleep=3, **kwargs):
-        try:
-            self.lock.acquire()
-            raw = self.queue.get_nowait()
-        except queue.Empty:
-            self.lock.release()
-            raise
-        self.lock.release()
-        return raw
+    # @Udeclogger(ltype='execution')
+    # def fetch_one(self, sleep=3, **kwargs):
+    #     try:
+    #         self.lock.acquire()
+    #         raw = self.queue.get_nowait()
+    #     except queue.Empty:
+    #         self.lock.release()
+    #         raise
+    #     self.lock.release()
+    #     return raw
     
     @Udeclogger(ltype='excexe')
     def add_result(self, r, **kwargs):
@@ -282,24 +284,25 @@ class Queenb(Babyb):
         # checking if honeyb ready
         self.status = 'working'
         self.killerb.start()
+        self.qb.start()
         ready_honeyb = 0
         while ready_honeyb == 0:
             for b in self.honeybs:
                 if b.status == 'ready':
                     ready_honeyb += 1
                 b.start()
-            self.logger.info('{} honeyb(s) are ready.{}'.format(ready_honeyb, '' if ready_honeyb==0 else ' Start working...'))
+            self.logger.info('{} honeyb(s) ready.{}'.format(ready_honeyb, '' if ready_honeyb==0 else ' Start working...'))
         
         for b in self.workerbs:
             b.start()
-        while self.count('worker') + self.count('honey') < self.max_children:
-            if not self.queue.empty():
-                b = self.add_child(Workerb)
-                b.start()
-            elif sum([b.status == 'working' for b in self.honeybs]) == 0:
-                break
+        # while self.count('worker') + self.count('honey') < self.max_children:
+        #     if not self.queue.empty():
+        #         b = self.add_child(Workerb)
+        #         b.start()
+        #     elif sum([b.status == 'working' for b in self.honeybs]) == 0:
+        #         break
         # add end flags
-        self.add_stop_flag(prefix=str(self)+' -- ')
+        # self.qb.add_stop_flag(prefix=str(self)+' -- ')
         for b in self.workerbs:
             b.join()
         self.rest()
@@ -333,7 +336,7 @@ class Queenb(Babyb):
         self.killerb.clear()
 
 @bee
-class Queueb(Babyb):
+class Qb(Babyb):
     
     '''Manager of Queen's queue.'''
 
@@ -373,7 +376,7 @@ class Queueb(Babyb):
 
     @Udeclogger(ltype='execution')
     def add_stop_flag(self, **kwargs):
-        self.add_to_queue([stop_flag for _ in range(self.Queen.count('workerb'))], sleep=self.sleep, suppress=True)
+        self.add_to_queue([stop_flag for _ in range(self.Queen.count('workerb'))], suppress=True)
     
     @Udeclogger(ltype='execution')
     def fetch_one(self, *args, **kwargs):
@@ -402,8 +405,12 @@ class Queueb(Babyb):
                                 self.logger.info('{} -- queue is empty.'.format(str(self)))
                                 self.queue_ready = False
                                 continue
-                    else: # no honeybs, instruct workers to stop
-                        self.add_stop_flag(prefix=str(self)+' -- ')
+                    elif self.Queen.workerbs: # if any workerb exists
+                        for w in self.Queen.workerbs:
+                            if w.status != 'done':
+                                self.add_stop_flag(prefix=str(self)+' -- ')
+                                continue
+                    else: # queen is not done, but no honeybs or workerbs, and queue empty,  do nothing
                         continue
                 else:
                     if not self.queue_ready:
@@ -473,7 +480,10 @@ class Honeyb(Babyb):
     @Udeclogger(ltype='exception', re_raise=False)
     def set_work_func(self, func, *args, **kwargs):
         self.logger.info('{} -- preparing working-function...'.format(self))
-        self.work_func = partial(func, *args, **kwargs)
+        if args or kwargs:
+            self.work_func = partial(func, *args, **kwargs)
+        else:
+            self.work_func = func
         self.logger.info('{} -- done preparing.'.format(self))
         self.func_set = True
         self.ready = [self.collected, self.func_set]
@@ -486,7 +496,7 @@ class Honeyb(Babyb):
                 # save original data into Queen
                 self.Queen.origin_data = self.roughed_pollen
                 # push data into queue
-                self.Queen.qb.add_to_queue(zip(repeat(self.work_func), self.roughed_pollen.itertuples()), self.sleep, prefix=str(self)+' -- ')
+                self.Queen.qb.add_to_queue(zip(repeat(self.work_func), self.roughed_pollen.itertuples()), prefix=str(self)+' -- ')
         else:
             self.logger.warning('{} not ready. Exit'.format(str(self)))
         self.status = 'done'
@@ -511,29 +521,28 @@ class Workerb(Babyb):
     def run(self):
         '''Get one function and a bunch of data, and run the function, from queue.'''
         self.status = 'working'
-        if self.Queen.status == 'working':
-            while True:
-                # check if queue is ready
-                if self.Queen.qb.queue_ready:
-                    try:
-                        raw = self.Queen.fetch_one(self.sleep, prefix=str(self)+' -- ')
-                    except queue.Empty:
-                        self.logger.info('{} -- empty queue.'.format(self))
-                        time.sleep(self.sleep)
-                        continue
-                    if raw == stop_flag:
-                        break
-                    
-                    func, args = raw
-                    idx = args[0]
-                    args = args[1:]
-                    try:
-                        r = func(*args, prefix=str(self)+' -- ', *self.args, **self.kwargs)
-                    except Exception as e:
-                        self.logger.critical(e)
-                        raise
-                    
-                    self.Queen.add_result([idx, func, args, r], prefix=str(self)+' -- ')
+        while self.Queen.status == 'working':
+            # check if queue is ready
+            if self.Queen.qb.queue_ready:
+                try:
+                    raw = self.Queen.qb.fetch_one(self.sleep, prefix=str(self)+' -- ')
+                except queue.Empty:
+                    self.logger.info('{} -- empty queue.'.format(self))
+                    time.sleep(self.sleep)
+                    continue
+                if raw == stop_flag:
+                    break
+                
+                func, args = raw
+                idx = args[0]
+                args = args[1:]
+                try:
+                    r = func(*args, prefix=str(self)+' -- ', *self.args, **self.kwargs)
+                except Exception as e:
+                    self.logger.critical(e)
+                    raise
+                
+                self.Queen.add_result([idx, func, args, r], prefix=str(self)+' -- ')
         self.status = 'done'
 
 @bee
@@ -548,32 +557,31 @@ class Browserb(Workerb):
     def run(self):
         '''Get one function and a bunch of data, and run the function, from queue, with browser-automation'''
         self.status = 'working'
-        if self.Queen.status == 'working':
-            while True:
-                # check if queue is ready
-                if self.Queen.qb.queue_ready:
-                    try:
-                        raw = self.Queen.fetch_one(self.sleep, prefix=str(self)+' -- ')
-                    except queue.Empty:
-                        self.logger.info('{} -- empty queue.'.format(self))
-                        time.sleep(self.sleep)
-                        continue
-                    if raw == stop_flag:
-                        break
-                    
-                    # when using Browserb, the func must accept a `driver` keyword argument
-                    func, args = raw
-                    idx = args[0]
-                    args = args[1:]
-                    try:
-                        r = func(*args, driver=self.driver, prefix=str(self)+' -- ', *self.args, **self.kwargs)
-                    except Exception as e:
-                        self.logger.critical(e)
-                        if self.quit_on_error:
-                            self.driver.quit()
-                        raise
-                    
-                    self.Queen.add_result([idx, func, args, r], prefix=str(self)+' -- ')
+        while self.Queen.status == 'working':
+            # check if queue is ready
+            if self.Queen.qb.queue_ready:
+                try:
+                    raw = self.Queen.qb.fetch_one(self.sleep, prefix=str(self)+' -- ')
+                except queue.Empty:
+                    self.logger.info('{} -- empty queue.'.format(self))
+                    time.sleep(self.sleep)
+                    continue
+                if raw == stop_flag:
+                    break
+                
+                # when using Browserb, the func must accept a `driver` keyword argument
+                func, args = raw
+                idx = args[0]
+                args = args[1:]
+                try:
+                    r = func(*args, driver=self.driver, prefix=str(self)+' -- ', *self.args, **self.kwargs)
+                except Exception as e:
+                    self.logger.critical(e)
+                    if self.quit_on_error:
+                        self.driver.quit()
+                    raise
+                
+                self.Queen.add_result([idx, func, args, r], prefix=str(self)+' -- ')
         self.driver.quit()
         self.status = 'done'
         
@@ -585,6 +593,8 @@ class Killerb(Babyb):
         self.Queen = queen
         self.sleep = sleep_interval
         self.logger = self.Queen.logger
+        
+        self.status = 'ready'
 
     @Udeclogger(ltype='execution')
     def clear(self, **kwargs):
@@ -596,7 +606,7 @@ class Killerb(Babyb):
                 self.Queen.lock.release()
                 break
         if self.Queen.workerbs:
-            self.Queen.add_stop_flag(prefix=str(self)+' -- ')
+            self.Queen.qb.add_stop_flag(prefix=str(self)+' -- ')
     
     def bury(self):
         for i in range(self.Queen.count('honey')-1, -1, -1):
@@ -616,13 +626,13 @@ class Killerb(Babyb):
         self.status = 'done'
 
 # %%
-if __name__ == '__main__':
-    def temp(*x, **kwargs):
-        print(sum(x))
-        time.sleep(random.randint(1,5))
-    logger = create_logger(name='QueenTest', filepath='test.log', stdout=True)
-    q = Queenb(max_children=5, queue_size=10, logger=logger)
-    h = q.add_honeyb(flower='list', fetch_args=[list(zip(range(10),range(10,20)))], work_func=temp)
-    for _ in range(3):
-        q.add_workerb()
-    q.start()
+# if __name__ == '__main__':
+#     def temp(*x, **kwargs):
+#         print(sum(x))
+#         time.sleep(random.randint(1,5))
+#     logger = create_logger(name='QueenTest', filepath='test.log', stdout=True)
+#     q = Queenb(max_children=5, queue_size=10, logger=logger)
+#     h = q.add_honeyb(flower='list', fetch_args=[list(zip(range(10),range(10,20)))], work_func=temp)
+#     for _ in range(3):
+#         q.add_workerb()
+#     q.start()

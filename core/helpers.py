@@ -1,5 +1,6 @@
-import json
+import json, string
 from time import sleep
+from collections import OrderedDict
 
 def split_n(string, delimiter=',', n=None, length=None, rejoin=True):
     l = string.split(delimiter)
@@ -39,3 +40,33 @@ def read_json(f):
 def write_json(f, data):
     with open(f, 'w') as outfile:
         json.dump(data, outfile)
+
+
+def col2num(col):
+    num = 0
+    for c in col:
+        if c in string.ascii_letters:
+            num = num * 26 + (ord(c.upper()) - ord('A')) + 1
+    return num
+
+def num2col(num):
+    col = ''
+    while num > 0:
+        num, remainder = divmod(num-1, 26)
+        col = chr(65 + remainder) + col
+    return col
+
+
+def circled_str(s, symbol='*', width=86):
+    return '\n' + symbol*width + '\n' + symbol + ' ' + s.ljust(width-3) + symbol + '\n' + symbol*width + '\n'
+
+def read_configuration(config_path, key=None):
+    config = read_json(config_path)
+    if key:
+        return config.get(key, None)
+    return config
+
+def write_configuration(config_path, **kwargs):
+    config = OrderedDict(read_json(config_path))
+    config.update(kwargs)
+    write_json(config_path, config)

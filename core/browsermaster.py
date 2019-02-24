@@ -10,6 +10,7 @@
 ## Imports 
 ###############################################################################
 from pathlib import Path
+import tkinter as tk
 
 import browser_cookie3, requests, win32com.client
 
@@ -28,14 +29,14 @@ PROMPTS = {
     'ready':            '{} ready to work.'
 }
 
-main_folder = Path(__file__).absolute().parent.parent
-driver_path = main_folder.joinpath('depository/drivers')
+root = Path(__file__).absolute().parent.parent
+driver_path = root.joinpath('depository/drivers')
 
 # initialize autoit
 try:
     autoit = win32com.client.Dispatch('AutoItX3.Control')
 except:
-    print('Autoit 3 is not installed. Install it for full functionality')
+    print('Autoit 3 is not installed. Limited functionality')
     autoit = None
 # win_pattern = {
 #     'chrome': {
@@ -111,6 +112,23 @@ class DriverMaster():
                     return branch
         return False
     
+    def find_displayed_xpath(self, xpath, url=None, trial=10, wait=1):
+        for _ in range(trial):
+            if url is not None:
+                self.get(url)
+            return [e for e in self.find_elements_by_xpath(xpath) if e.is_displayed()]
+        return False
+    
+    def find_first_displayed(self, xpath, url=None, trial=10, wait=1):
+        for _ in range(trial):
+            if url is not None:
+                self.get(url)
+            try:
+                return [e for e in self.find_elements_by_xpath(xpath) if e.is_displayed()][0]
+            except:
+                continue
+        return False
+    
     def fill_form(self, items):
         fails = {}
         # xpath-value pairs
@@ -120,61 +138,76 @@ class DriverMaster():
         return fails
     
     def fill_form_item(self, item_xpath, item_value):
-        try:
-            item_ele = self.xpath_exists(item_xpath, wait=5)
-        except NoSuchElementException:
-            return False
+        # try:
+        #     item_ele = self.xpath_exists(item_xpath, wait=5)
+        # except NoSuchElementException:
+        #     return False
+        item_ele = self.xpath_exists(item_xpath, wait=5)
+        # put value into clipboard; this need blocks among threads
+        # tkroot = tk.Tk()
+        # tkroot.withdraw()
+        # tkroot.clipboard_clear()
+        # tkroot.clipboard_append(item_value)
+        # tkroot.update()
+        # tkroot.destroy()
 
         if item_ele.tag_name in ['input']:
         # checkbox
             if item_ele.get_attribute('type') == 'checkbox': # item_value will be boolean
+                item_value = int(item_value)
                 if item_ele.is_selected() != item_value:
                     item_ele.click()
                 if not item_ele.is_selected == item_value:
                     # pyautogui
-                    pass
+                    return False
         # text .etc input
             elif item_ele.get_attribute('type') in ['datetime', 'number', 'email', 'password', 'mySearch', 'text', 'url']:
                 item_ele.send_keys(Keys.CONTROL, 'a')
-                item_ele.send_keys(item_value)
+                # item_ele.send_keys(item_value)
+                # item_ele.send_keys(Keys.CONTROL, 'v')
+                # using js to input
+                self.execute_script('''arguments[0].value = arguments[1]''', item_ele, item_value)
                 if not item_ele.get_attribute('value') == item_value:
                     # pyautogui
-                    pass
+                    return False
         # buttons
             elif item_ele.get_attribute('type') in ['submit', 'button']:
                 item_ele.click()
-        elif item_ele.tag_name in ['button']:
+        elif item_ele.tag_name in ['button'] or item_ele.get_attribute('role') == 'button':
             item_ele.click()
         # select
-        elif item_ele.tag_name in ['select']: # item_value will be index
+        elif item_ele.tag_name in ['select']: # item_value will be index or name
+            # `Select` object in selenium supports 3 ways to select items
             item_select = Select(item_ele)
-            item_value = int(item_value)
             try:
-                item_select.select_by_index(item_value)
+                item_select.select_by_index(int(item_value))
                 if not item_select.options.index(item_select.first_selected_option) == item_value:
                     # pyautogui
-                    pass
+                    return False
             except:
                 try:
                     item_select.select_by_value(item_value)
                     if not item_select.first_selected_option.get_attribute('value') == item_value:
                         # pyautogui
-                        pass
+                        return False
                 except:
                     try:
                         item_select.select_by_visible_text(item_value)
                         if not item_select.first_selected_option.text == item_value:
                             # pyautogui
-                            pass
+                            return False
                     except:
                         return False
         # textarea
         elif item_ele.tag_name in ['textarea']:
             item_ele.send_keys(Keys.CONTROL, 'a')
-            item_ele.send_keys(item_value)
+            # item_ele.send_keys(item_value)
+            # item_ele.send_keys(Keys.CONTROL, 'v')
+            # using js to input
+            self.execute_script('''arguments[0].value = arguments[1]''', item_ele, item_value)
             if not item_ele.get_attribute('value') == item_value:
                 # pyautogui
-                pass
+                return False
         return True    
     
     def getsu(self, url, checker=None):

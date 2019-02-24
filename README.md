@@ -47,3 +47,17 @@ Email, Slack, Redash...
 #### Copy/Paste to csv-like
 Python libraries (csv, gspread)
 #### Crawling
+
+## How to use
+### Prerequisite
+- For simple users: a moderate teammate
+- For moderate users: basic HTML and xPath
+- For advanced users: Python and all above
+
+### Install (this is temporary)
+1. Open the "installers" folder
+2. For Windows users, right-click and run "_installer_for_Windows.ps1"
+3. Follow the instruct and wait for the installation complete
+4. After installation, there will be some icons show up in the root folder, each opens a different UI
+
+### Command-line mode

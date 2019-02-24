@@ -1,4 +1,10 @@
 {
-    
-    "favor_browser": ""
+    "debug": "0",
+    "favor_browser": "chrome",
+    "language": "",
+    "operation_sp_id": "",
+    "operation_ws_name": "",
+    "operation_path": "",
+    "max_thread": "",
+    "google_account_name": ""
 }

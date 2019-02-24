@@ -1,0 +1,22 @@
+{
+    "welcome":          "Welcome to AUTOMATA (CTRL+C to exit)",
+
+    "q_master":         "Choose your master: ",
+    "q_master_l":       "Run Automata on ",
+    "q_master_l1":      "simple mode",
+    "q_master_l2":      "advanced mode",
+    "q_config":         "Check items to enter new values: ",
+
+    "q_ops":            "Searching for available operations ",
+    "q_ops1":           "online",
+    "q_ops2":           "offline",
+    "q_ops_on_id":      "Spreadsheet ID for seaching:\n",
+    "q_ops_on_name":    "WorkSheet name containing all available operations:\n",
+    "q_ops_off_path":   "Local path containing all available operations (or input nothing to select with browser):\n",
+    "q_op_choice":      "Select an operation from below:",
+
+    "q_data":           "Data file for processing is ",
+    "q_data_on_id":     "Spreadsheet ID for data:\n",
+    "q_data_on_name":   "WorkSheet name containing data:\n",
+    "q_data_off_path":  "Local path of data file (or input nothing to select with browser):\n"
+}
