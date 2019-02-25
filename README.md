@@ -34,6 +34,12 @@ And google scripts for google services
 - Online: share scripts with people, group or public; upload or download
 - Offline: Just put scripts (.py or .csv or ...?) into local folder, and the level is determined by suffix
 
+### other preprations before using
+#### Google service access credential file
+1. Following the [Google documentation](https://developers.google.com/identity/protocols/OAuth2ServiceAccount) to create a new project and service account
+2. Download the credential file and rename it to "gss_credential.json"
+3. Put the file into folder "*\Automata\data\"
+4. Remember the account email. And share your working spreadsheets with this account. ([How to share Google files](https://support.google.com/drive/answer/2494822?co=GENIE.Platform%3DDesktop&hl=en))
 
 ### For different missions
 #### Forms
