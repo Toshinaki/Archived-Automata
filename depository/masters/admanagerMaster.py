@@ -13,13 +13,21 @@ config_path = root.joinpath('data/config.json')
 config = read_configuration(config_path)
 account_name = config.get('google_account_name')
 
+# google's popup menu for selection
+special_selects = [
+    '//div[contains(@id, "lineItemTypePriority-lstLineItemTypes")]',
+    '//div[contains(@id, "lineItemType-startDateBox")]',
+
+]
+
 class AdmanagerSimpleMaster:
 
     '''Read operation steps and information from sheets, then execute.'''
 
-    def __init__(self, df_op, df_data, *args, **kwargs):
+    def __init__(self, df_op, df_data, end_flags=['o', 'x'], *args, **kwargs):
         self.df_op = df_op
         self.df_data = df_data
+        self.end_flags = end_flags
     
     def rough_func(self, df, *args, **kwargs):
         '''`rough_func` can be created as many as possible when a specific mission requests it.'''
@@ -29,7 +37,7 @@ class AdmanagerSimpleMaster:
     
     def work_func(self, raw, driver, *args, **kwargs):
         '''`work_fun` can be created as many as possible for different missions.'''
-        max_run_times = 1
+        max_run_times = 3
         run_times = 1
 
         curr_step_num = 0
@@ -49,36 +57,88 @@ class AdmanagerSimpleMaster:
             curr_step = self.df_op.iloc[curr_step_num]
             # parse row content
             service, dim, page, item, xpath, data, nxt = curr_step
-            if nxt in ['o', 'x']: # end flags
+            if nxt in self.end_flags: # end flags
                 return nxt
             # select needed information from raw
             nxt_dim, nxt_page, nxt_item, input_ = data.format(**raw).split(',', 3)
-            # current step opens an url; if {}, insert input_ into it
-            if 'url' in item:
-                url, checker = xpath.split('###', 1)
-                url = url.format(input_)
-                if driver.getsu(url, checker) == False:
-                    failed = True
-                    error = 'error at step {}. Given url ({}) is not available or  doesnot have element {}'.format(curr_step_num, url, xpath)
-                    continue
-                # checking for account selection
-                if account_name:
-                    account_xpath = '//*[@id="profileIdentifier"][contains(text(), "{}")]'.format(account_name)
+            
+            if not input_.startswith('SKIP'):
+                input_ = input_.split('#!#')
+                # current step opens an url; if {}, insert input_ into it
+                if 'url' in item:
+                    url, checker = xpath.split('###', 1)
+                    url = url.format(*input_)
+                    if driver.getsu(url) == False:
+                        failed = True
+                        error = 'error at step {}. Cannot open given url ({})'.format(curr_step_num, url)
+                        continue
+                    # checking for account selection
+                    if account_name:
+                        account_xpath = '//*[@id="profileIdentifier"][contains(text(), "{}")]'.format(account_name)
+                    else:
+                        account_xpath = '//*[@id="profileIdentifier"][1]'
+                    branch = driver.find_branch({'select_account': account_xpath, 'search_box': '//global-search[@role="search"]'})
+                    if branch == 'select_account':
+                        driver.xpath_exists(account_xpath).click()
+                    
+                    if not driver.wait_xpath(checker):
+                        failed = True
+                        error = 'error at step {}. Cannot find element {} at given url ({})'.format(curr_step_num, checker, url)
+                        continue
+
+
+                # current step searchs for an element; input input_ into it
                 else:
-                    account_xpath = '//*[@id="profileIdentifier"][1]'
-                branch = driver.find_branch({'select_account': account_xpath, 'search_box': '//global-search[@role="search"]'})
-                if branch == 'select_account':
-                    driver.xpath_exists(account_xpath).click()
-
-
-            # current step searchs for an element; input input_ into it
-            else:
-                if not try_n(3, driver.fill_form_item, 0.5, xpath, input_):
-                    print('error {};{}.'.format(xpath, input_))
-                    print(type(input_))
-                    failed = True
-                    error = 'error at step {}. no element {}'.format(curr_step_num, xpath)
-                    continue
+                    n_format = xpath.count('{}')
+                    if n_format:
+                        xpath = xpath.format(input_[:n_format])
+                        input_ = input_[n_format:]
+                    for i in input_:
+                        if not try_n(3, driver.fill_form_item, 0.5, xpath, i):
+                            print(try_n(3, driver.fill_form_item, 0.5, xpath, i))
+                            print('error {};{}.'.format(xpath, i))
+                            print(driver.fill_form_item(xpath, i))
+                            print(type(i))
+                            failed = True
+                            error = 'error at step {}. no element {}'.format(curr_step_num, xpath)
+                            continue
+                    # if xpath in special_selects: # google's special selects containing input box for filtering
+                    #     if not try_n(3, driver.fill_form_item, 0.5, xpath, input_):
+                    #         print('error {};{}.'.format(xpath, input_))
+                    #         print(type(input_))
+                    #         failed = True
+                    #         error = 'error at step {}. no element {}'.format(curr_step_num, xpath)
+                    #         continue
+                    #     # check if input box available
+                    #     input_boxes = driver.find_displayed_xpath(xpath+'//input')
+                    #     # if input boxes exist, count number of it and split input_data
+                    #     if input_boxes:
+                    #         for i in range(len(input_boxes)):
+                    #             temp_input = xpath+'//input[{}]'.format(i+1)
+                    #             if not try_n(3, driver.fill_form_item, 0.5, temp_input, input_[i]):
+                    #                 print('error {};{}.'.format(temp_input, input_[i]))
+                    #                 print(type(input_[i]))
+                    #                 failed = True
+                    #                 error = 'error at step {}. no element {}'.format(curr_step_num, temp_input)
+                    #                 continue
+                    #     else:
+                    #         item_xpath = '''//div[@class="popupContent"]//*[contains(text(), "{}")]'''.format(input_)
+                    #         if not try_n(3, driver.fill_form_item, 0.5, item_xpath, 'CLICK'):
+                    #             print('error {};{}.'.format(xpath, input_))
+                    #             print(type(input_))
+                    #             failed = True
+                    #             error = 'error at step {}. no element {}'.format(curr_step_num, item_xpath)
+                    #             continue
+                    # else:
+                    #     if not try_n(3, driver.fill_form_item, 0.5, xpath, input_):
+                    #         print(try_n(3, driver.fill_form_item, 0.5, xpath, input_))
+                    #         print(driver.fill_form_item(xpath, input_))
+                    #         print('error {};{}.'.format(xpath, input_))
+                    #         print(type(input_))
+                    #         failed = True
+                    #         error = 'error at step {}. no element {}'.format(curr_step_num, xpath)
+                    #         continue
+            
             # read next step(s)
             nxt = json.loads(nxt)
             # only one integer, go to it

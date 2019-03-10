@@ -9,8 +9,9 @@
 ###############################################################################
 ## Imports 
 ###############################################################################
-from pathlib import Path
 import tkinter as tk
+from pathlib import Path
+from urllib.parse import urlparse
 
 import browser_cookie3, requests, win32com.client
 
@@ -62,6 +63,7 @@ class DriverMaster():
                 discard=cookie.get('discard', True), comment=cookie.get('comment', None),
                 comment_url=cookie.get('comment_url', None))
         self.cookiejar = cookiejar
+        self.set_page_load_timeout(30)
     
     def get_parent(self, ele, level=1):
         for _ in range(level):
@@ -71,44 +73,49 @@ class DriverMaster():
                 break
         return ele
     
-    def xpath_exists(self, xpath, wait=10):
+    def xpath_exists(self, xpath, wait=10, visible=False):
+        if visible:
+            return WebDriverWait(self, wait).until(EC.visibility_of_element_located((By.XPATH, xpath)))
         return WebDriverWait(self, wait).until(EC.presence_of_element_located((By.XPATH, xpath)))
     
-    def wait_xpath(self, xpath, url=None, trial=3, wait=10):
+    def wait_xpath(self, xpath, url=None, trial=3, wait=10, visible=False):
         for _ in range(trial):
             if url is not None:
                 self.get(url)
             try:
-                ele = self.xpath_exists(xpath, wait=wait)
+                ele = self.xpath_exists(xpath, wait=wait, visible=visible)
             except TimeoutException:
                 continue
             else:
-                return ele
+                if ele.is_displayed():
+                    return ele
+                else:
+                    break
         return False
     
-    def xpath_any(self, xpaths, url=None, trial=3, wait=1):
+    def xpath_any(self, xpaths, url=None, trial=3, wait=1, visible=False):
         for _ in range(trial):
             if url is not None:
                 self.get(url)
             for xpath in xpaths:
-                if self.wait_xpath(xpath, wait=wait):
+                if self.wait_xpath(xpath, wait=wait, visible=visible):
                     return True
         return False
     
-    def xpath_exists_after(self, xpath, another, wait=10):
-        if self.wait_xpath(another, wait=wait):
-            ele = self.wait_xpath(xpath, wait=wait)
+    def xpath_exists_after(self, xpath, another, wait=10, visible=False):
+        if self.wait_xpath(another, wait=wait, visible=visible):
+            ele = self.wait_xpath(xpath, wait=wait, visible=visible)
             return ele
         return False
 
-    def find_branch(self, branches, url=None, trial=10, wait=1):
+    def find_branch(self, branches, url=None, trial=10, wait=1, visible=False):
         for _ in range(trial):
             if url is not None:
                 self.get(url)
             for branch, xpath in branches.items():
                 if not isinstance(xpath, list):
                     xpath = [xpath]
-                if self.xpath_any(xpath, trial=1, wait=wait):
+                if self.xpath_any(xpath, trial=1, wait=wait, visible=visible):
                     return branch
         return False
     
@@ -137,12 +144,8 @@ class DriverMaster():
                 fails[xpath] = v
         return fails
     
-    def fill_form_item(self, item_xpath, item_value):
-        # try:
-        #     item_ele = self.xpath_exists(item_xpath, wait=5)
-        # except NoSuchElementException:
-        #     return False
-        item_ele = self.xpath_exists(item_xpath, wait=5)
+    def fill_form_item(self, item_xpath, item_value, special=None):
+        item_ele = self.xpath_exists(item_xpath, wait=5, visible=True)
         # put value into clipboard; this need blocks among threads
         # tkroot = tk.Tk()
         # tkroot.withdraw()
@@ -151,30 +154,48 @@ class DriverMaster():
         # tkroot.update()
         # tkroot.destroy()
 
+        # define special element (e.g. dropdown-input)
+        # if special == ''
+
         if item_ele.tag_name in ['input']:
         # checkbox
             if item_ele.get_attribute('type') == 'checkbox': # item_value will be boolean
                 item_value = int(item_value)
                 if item_ele.is_selected() != item_value:
-                    item_ele.click()
+                    try:
+                        item_ele.click()
+                    except:
+                        self.execute_script('''arguments[0].click()''', item_ele)
                 if not item_ele.is_selected == item_value:
                     # pyautogui
                     return False
         # text .etc input
             elif item_ele.get_attribute('type') in ['datetime', 'number', 'email', 'password', 'mySearch', 'text', 'url']:
-                item_ele.send_keys(Keys.CONTROL, 'a')
-                # item_ele.send_keys(item_value)
-                # item_ele.send_keys(Keys.CONTROL, 'v')
-                # using js to input
-                self.execute_script('''arguments[0].value = arguments[1]''', item_ele, item_value)
-                if not item_ele.get_attribute('value') == item_value:
-                    # pyautogui
-                    return False
+                try:
+                    item_ele.send_keys(getattr(Keys, item_value))
+                except:
+                    item_ele.send_keys(Keys.CONTROL, 'a')
+                    # item_ele.send_keys(item_value)
+                    # item_ele.send_keys(Keys.CONTROL, 'v')
+                    # using js to input
+                    if '\t' in item_value:
+                        self.execute_script('''arguments[0].value = arguments[1]''', item_ele, item_value)
+                    else:
+                        item_ele.send_keys(item_value)
+                    # if not item_ele.get_attribute('value') == item_value:
+                    #     # pyautogui
+                    #     return False
         # buttons
             elif item_ele.get_attribute('type') in ['submit', 'button']:
-                item_ele.click()
+                try:
+                    item_ele.click()
+                except:
+                    self.execute_script('''arguments[0].click()''', item_ele)
         elif item_ele.tag_name in ['button'] or item_ele.get_attribute('role') == 'button':
-            item_ele.click()
+            try:
+                item_ele.click()
+            except:
+                self.execute_script('''arguments[0].click()''', item_ele)
         # select
         elif item_ele.tag_name in ['select']: # item_value will be index or name
             # `Select` object in selenium supports 3 ways to select items
@@ -208,17 +229,30 @@ class DriverMaster():
             if not item_ele.get_attribute('value') == item_value:
                 # pyautogui
                 return False
+        elif item_value == 'CLICK':
+            try:
+                item_ele.click()
+            except:
+                self.execute_script('''arguments[0].click()''', item_ele)
         return True    
     
     def getsu(self, url, checker=None):
-        self.get(url)
+        while True:
+            try:
+                self.get(url)
+                break
+            except TimeoutException:
+                continue
+        
         flag = True
         if checker:
             if self.wait_xpath(checker, trial=1, wait=2):
                 flag = False
         if flag:
+            domain = urlparse(url).hostname
+            domain = domain and domain.split('.')[-2]
             for cookie in self.cookiejar:
-                if cookie['domain'] in url:
+                if (cookie['domain'] and cookie['domain'] in url) or (domain and domain in cookie['domain']):
                     self.add_cookie(cookie)
             self.get(url)
         if checker:

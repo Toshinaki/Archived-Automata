@@ -538,9 +538,12 @@ class Workerb(Babyb):
                 args = args[1:]
                 try:
                     r = func(*args, prefix=str(self)+' -- ', *self.args, **self.kwargs)
-                except Exception as e:
-                    self.logger.critical(e)
-                    raise
+                except:
+                    try:
+                        r = func(*args, prefix=str(self)+' -- ', *self.args, **self.kwargs)
+                    except Exception as e:
+                        self.logger.critical(e)
+                        # raise
                 
                 self.Queen.add_result([idx, func, args, r], prefix=str(self)+' -- ')
         self.status = 'done'

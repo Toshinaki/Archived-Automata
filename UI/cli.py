@@ -253,13 +253,14 @@ def main():
                     tkroot.withdraw()
 
                     data_path = filedialog.askopenfilename()
-                    tkroot.destory()
+                    tkroot.destroy()
                 df_data = pd.read_csv(data_path, engine='python')
 ###############################################################################
             print(circled_str('All information collected. Starting execution...'))
             logger.info('Starting processing...')
             # init master and queen
-            master = Master(df_op, df_data)
+            end_flags = config.get('end_flags', ['o', 'x'])
+            master = Master(df_op, df_data, end_flags=end_flags)
             try:
                 max_children = int(config.get('max_thread'))
             except:

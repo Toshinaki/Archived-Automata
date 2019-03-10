@@ -13,9 +13,10 @@ class BasicSimpleMaster:
 
     '''Read operation steps and information from sheets, then execute.'''
 
-    def __init__(self, df_op, df_data, *args, **kwargs):
+    def __init__(self, df_op, df_data, end_flags=['o', 'x'], *args, **kwargs):
         self.df_op = df_op
         self.df_data = df_data
+        self.end_flags = end_flags
     
     def rough_func(self, df, *args, **kwargs):
         '''`rough_func` can be created as many as possible when a specific mission requests it.'''
@@ -45,20 +46,27 @@ class BasicSimpleMaster:
             curr_step = self.df_op.iloc[curr_step_num]
             # parse row content
             service, dim, page, item, xpath, data, nxt = curr_step
-            if nxt in ['o', 'x']: # end flags
+            if nxt in self.end_flags: # end flags
                 return nxt
             # select needed information from raw
             nxt_dim, nxt_page, nxt_item, input_ = data.format(**raw).split(',', 3)
+            input_ = input_.split('#!#')
             # current step opens an url; if {}, insert input_ into it
             if 'url' in item:
                 url, checker = xpath.split('###', 1)
-                url = url.format(input_)
+                url = url.format(*input_)
                 if driver.getsu(url, checker) == False:
                     failed = True
                     error = 'error at step {}. Given url ({}) is not available or  doesnot have element {}'.format(curr_step_num, url, xpath)
                     continue
             # current step searchs for an element; input input_ into it
             else:
+                n_format = xpath.count('{}')
+                if n_format:
+                    xpath = xpath.format(input_[:n_format])
+                    input_ = input_[n_format:]
+                else:
+                    input_ = input_[0]
                 if not try_n(3, driver.fill_form_item, 0.5, xpath, input_):
                     print('error {};{}.'.format(xpath, input_))
                     print(type(input_))

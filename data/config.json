@@ -1,5 +1,6 @@
 {
     "debug": "0",
+    "end_flags": ["o", "x"],
     "favor_browser": "chrome",
     "language": "",
     "operation_sp_id": "",
